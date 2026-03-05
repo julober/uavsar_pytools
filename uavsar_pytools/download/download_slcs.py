@@ -15,11 +15,14 @@ def get_uavsar_slcs(
     flight_name: str, 
     flight_num: str = None,
     getann: bool = False, 
+    getdop: bool = False,
+    getllh: bool = False,
+    getlkv: bool = False,
     start_date: str = '2020-01-01',
     end_date: str = '2021-12-31',
     pol: list = ['HH'],
-    sec: list = ['s1', 's2', 's3'],
-    pxspc: str = '2x8',
+    seg: list = ['s1', 's2', 's3'],
+    pxlsp: list = ['2x8'],
     tag: list = ['BU']
 ) -> dict: 
     """
@@ -45,8 +48,8 @@ def get_uavsar_slcs(
         List of polarization bands to include. Default is ['HH'].
     sec : list of str, optional
         List of data segments/swaths to include. Default is ['s1', 's2', 's3'].
-    pxspc : str, optional
-        Pixel spacing string to append to the filename. Default is '2x8'.
+    pxlsp : list of str, optional
+        Pixel spacing strings to append to the filename. Default is ['2x8'].
     tag : list of str, optional
         List of file type tags to include (e.g., 'BU' for baseline-updated). Default is ['BU'].
 
@@ -61,11 +64,11 @@ def get_uavsar_slcs(
     ValueError
         If the provided `flight_name` is not found in the valid campaigns mapping.
     """
-    jpl_site = 'https://downloaduav2.jpl.nasa.gov'
-    release_folder = 'Release30'
+    # jpl_site = 'https://downloaduav2.jpl.nasa.gov'
+    # release_folder = 'Release30'
     links = defaultdict(list)
 
-    campaigns = {
+    campaigns = { # SnowEx campaigns and abbreviations
         'grmesa': 'Grand Mesa, CO',
         'lowman': 'Lowman, CO',
         'fraser': 'Fraser, CO',
@@ -125,23 +128,31 @@ def get_uavsar_slcs(
         
         for t in tag:
             for p in pol: 
-                for s in sec: 
-                    f1_base = f"{site}_{flight_line}_{flight1_id}_{date1}_{band}{p}_{version}_{t}"
-                    
-                    stack_dir = f"{site}_{flight_line}_{version}"
-                    base_url = f"{jpl_site}/{release_folder}/{stack_dir}"
+                urls = []
+                for s in seg: 
+                    for pxl in pxlsp:
+                        f1_base = f"{site}_{flight_line}_{flight1_id}_{date1}_{band}{p}_{version}_{t}"
+                        
+                        # stack_dir = f"{site}_{flight_line}_{version}"
+                        # base_url = f"{jpl_site}/{release_folder}/{stack_dir}"
 
-                    urls = [
-                        f"{f1_base}_{s}_{pxspc}.slc",
-                    ]
+                        urls.append(f"{f1_base}_{s}_{pxl}.slc")
 
-                    if getann: 
-                        urls.append(f"{f1_base}.ann")
+                        # this will cause some repeats, since there is only one per seg
+                        if getllh: 
+                            urls.append(f"{site}_{flight_line}_{version}_{t}_{s}_{pxl}.llh")
+                        if getlkv: 
+                            urls.append(f"{site}_{flight_line}_{version}_{t}_{s}_{pxl}.lkv")
 
-                    dict_key = f'{flight_abbr}_{flight_line}'
-                    for url in urls:
-                        if url not in links[dict_key]:
-                            links[dict_key].append(url)
+                if getann: 
+                    urls.append(f"{f1_base}.ann")
+                if getdop: 
+                        urls.append(f"{site}_{flight_line}_{version}_{t}.dop")
+
+                dict_key = f'{flight_abbr}_{flight_line}'
+                for url in urls:
+                    if url not in links[dict_key]:
+                        links[dict_key].append(url)
 
     return links
 
@@ -168,7 +179,7 @@ def download_uavsar_slcs(files: list, out_dir: str):
     """
     def is_html(link):
         try:
-            # stream=True fetches the headers without downloading the whole file
+            # stream=true fetches the headers without downloading the whole file
             response = requests.get(link, stream=True)
             content_type = response.headers.get('Content-Type', '')
             response.close()
@@ -181,19 +192,26 @@ def download_uavsar_slcs(files: list, out_dir: str):
     releases = np.arange(26, 32)[::-1]  
     RELEASE_FOLDERS = [f'Release{r}' for r in releases]
 
-    # Guard clause in case an empty list is passed
+    # check for empty list
     if not files:
         log.warning("No files provided to download.")
         return
+    if type(files) is not list:
+        log.error(f"Files parameter should be a list of filenames, got type {type(files)} instead.")
+        return
+    if type(files[0]) is not str:
+        log.error(f"Files list should contain strings (filenames), got type {type(files[0])} instead.")
+        return
 
+    # very basic check for filename structure 
     try: 
         parts = files[0].split('_')
         flight_folder = f"{parts[0]}_{parts[1]}_{parts[6]}"
-    except IndexError as e:
+    except:
         log.error(f"Filename {files[0]} was not recognized as a valid UAVSAR filename.")
         return
 
-    # Find valid release folder
+    # find valid release folder
     release_folder = None
     for r in RELEASE_FOLDERS:
         url = f'{BASE_URL}/{r}/{flight_folder}/{files[0]}'
@@ -206,7 +224,7 @@ def download_uavsar_slcs(files: list, out_dir: str):
         log.error("Could not find a valid release folder for these files.")
         return
 
-    # Download routine
+    # download files
     for f in files:
         link = f'{BASE_URL}/{release_folder}/{flight_folder}/{f}'
         
