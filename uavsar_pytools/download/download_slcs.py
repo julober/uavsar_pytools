@@ -1,0 +1,225 @@
+import os
+import logging
+import numpy as np
+import asf_search as asf
+import requests
+from collections import defaultdict
+
+# Import the native download function from the repo
+from uavsar_pytools.download.download import stream_download
+
+# Initialize the logger
+log = logging.getLogger(__name__)
+
+def get_uavsar_slcs(
+    flight_name: str, 
+    flight_num: str = None,
+    getann: bool = False, 
+    start_date: str = '2020-01-01',
+    end_date: str = '2021-12-31',
+    pol: list = ['HH'],
+    sec: list = ['s1', 's2', 's3'],
+    pxspc: str = '2x8',
+    tag: list = ['BU']
+) -> dict: 
+    """
+    Query the ASF DAAC for UAVSAR flight lines and generate a dictionary of JPL download URLs.
+
+    This function maps a given UAVSAR campaign name to its corresponding ASF search string, 
+    retrieves the metadata for the specified date range, and constructs the expected filenames
+    for the JPL Release 30 data portal.
+
+    Parameters
+    ----------
+    flight_name : str
+        The abbreviation or full name of the UAVSAR campaign (e.g., 'lowman' or 'Lowman, CO').
+    flight_num : str, optional
+        Specific flight line number to filter the search. Default is None (returns all lines).
+    getann : bool, optional
+        If True, appends the annotation (.ann) file URL for each flight. Default is False.
+    start_date : str, optional
+        Start date for the ASF search in 'YYYY-MM-DD' format. Default is '2020-01-01'.
+    end_date : str, optional
+        End date for the ASF search in 'YYYY-MM-DD' format. Default is '2021-12-31'.
+    pol : list of str, optional
+        List of polarization bands to include. Default is ['HH'].
+    sec : list of str, optional
+        List of data segments/swaths to include. Default is ['s1', 's2', 's3'].
+    pxspc : str, optional
+        Pixel spacing string to append to the filename. Default is '2x8'.
+    tag : list of str, optional
+        List of file type tags to include (e.g., 'BU' for baseline-updated). Default is ['BU'].
+
+    Returns
+    -------
+    dict
+        A defaultdict where keys are formatted as '{flight_abbr}_{flight_line}' and values 
+        are lists of constructed JPL filenames/URLs.
+
+    Raises
+    ------
+    ValueError
+        If the provided `flight_name` is not found in the valid campaigns mapping.
+    """
+    jpl_site = 'https://downloaduav2.jpl.nasa.gov'
+    release_folder = 'Release30'
+    links = defaultdict(list)
+
+    campaigns = {
+        'grmesa': 'Grand Mesa, CO',
+        'lowman': 'Lowman, CO',
+        'fraser': 'Fraser, CO',
+        'ironto': 'Ironton, CO',                    # Senator Beck Basin
+        'peeler': 'Peeler Peak, CO',                # East River
+        'rockmt': 'Rocky Mountains NP, CO',         # Cameron Pass
+        'silver': 'Silver City, ID',                # Reynolds Creek
+        'uticam': 'Utica, MT',                      # Central Ag Research Center
+        'saltla': 'Salt Lake City, UT',             # Little Cottonwood Canyon
+        'losala': 'Los Alamos, NM',                 # Jemez River
+        'dorado': 'Eldorado National Forest, CA',   # American River Basin
+        'donner': 'Donner Memorial State Park, CA', # Sagehen Creek
+        'sierra': 'Sierra National Forest, CA'      # Lakes Basin
+    }
+
+    if flight_name not in campaigns.values():
+        try: 
+            flight_abbr = flight_name 
+            flight_name = campaigns[flight_name]
+        except KeyError:
+            raise ValueError(f"Invalid flight name: {flight_name}. Valid options are: {campaigns}")
+    else: 
+        flight_abbr = next((k for k, v in campaigns.items() if v == flight_name), None)
+        
+    log.info(f'Getting files for {flight_name} ({flight_abbr}).')
+
+    if flight_num is None: 
+        grans = asf.search(platform='UAVSAR', 
+                           campaign=flight_name, 
+                           beamMode='POL',
+                           start=start_date,
+                           end=end_date)
+    else: 
+        grans = asf.search(platform='UAVSAR', 
+                           campaign=flight_name, 
+                           flightLine=flight_num,
+                           beamMode='POL',
+                           start=start_date,
+                           end=end_date)
+    
+    log.info(f"{len(grans)} granules found for {flight_name}")
+    
+    flight_lines = set()
+
+    for g in grans: 
+        scene_name = g.properties["sceneName"]
+        parts = scene_name.split("_")
+        
+        site = parts[1]
+        flight_line = parts[2].zfill(5)
+        flight_lines.add(flight_line)
+        
+        flight1_id = parts[3] + '_' + parts[4]
+        band = parts[6]
+        version = parts[8]
+        date1 = parts[5]
+        
+        for t in tag:
+            for p in pol: 
+                for s in sec: 
+                    f1_base = f"{site}_{flight_line}_{flight1_id}_{date1}_{band}{p}_{version}_{t}"
+                    
+                    stack_dir = f"{site}_{flight_line}_{version}"
+                    base_url = f"{jpl_site}/{release_folder}/{stack_dir}"
+
+                    urls = [
+                        f"{f1_base}_{s}_{pxspc}.slc",
+                    ]
+
+                    if getann: 
+                        urls.append(f"{f1_base}.ann")
+
+                    dict_key = f'{flight_abbr}_{flight_line}'
+                    for url in urls:
+                        if url not in links[dict_key]:
+                            links[dict_key].append(url)
+
+    return links
+
+
+def download_uavsar_slcs(files: list, out_dir: str): 
+    """
+    Download UAVSAR files from the JPL data portal to a specified local directory.
+
+    This function constructs the download URL for each file, checks for proper release folders 
+    (handling 404 HTML redirects from JPL gracefully), and utilizes the package's native 
+    `stream_download` method to fetch the data. It skips files that already exist locally.
+
+    Parameters
+    ----------
+    files : list of str
+        A list of UAVSAR filenames generated by `get_uavsar_slcs`.
+    out_dir : str
+        The absolute or relative path to the local directory where files will be saved.
+
+    Returns
+    -------
+    None
+        Outputs are saved directly to disk. Function logs the progress and status of downloads.
+    """
+    def is_html(link):
+        try:
+            # stream=True fetches the headers without downloading the whole file
+            response = requests.get(link, stream=True)
+            content_type = response.headers.get('Content-Type', '')
+            response.close()
+            return 'text/html' in content_type
+        except requests.RequestException as e:
+            log.error(f"Failed to check link {link}: {e}")
+            return False
+
+    BASE_URL = 'https://downloaduav2.jpl.nasa.gov'
+    releases = np.arange(26, 32)[::-1]  
+    RELEASE_FOLDERS = [f'Release{r}' for r in releases]
+
+    # Guard clause in case an empty list is passed
+    if not files:
+        log.warning("No files provided to download.")
+        return
+
+    try: 
+        parts = files[0].split('_')
+        flight_folder = f"{parts[0]}_{parts[1]}_{parts[6]}"
+    except IndexError as e:
+        log.error(f"Filename {files[0]} was not recognized as a valid UAVSAR filename.")
+        return
+
+    # Find valid release folder
+    release_folder = None
+    for r in RELEASE_FOLDERS:
+        url = f'{BASE_URL}/{r}/{flight_folder}/{files[0]}'
+        if not is_html(url):
+            log.info(f'Found valid link, using release folder {r} for download.')
+            release_folder = r
+            break
+
+    if not release_folder:
+        log.error("Could not find a valid release folder for these files.")
+        return
+
+    # Download routine
+    for f in files:
+        link = f'{BASE_URL}/{release_folder}/{flight_folder}/{f}'
+        
+        if is_html(link):
+            log.warning(f"Link {link} appears to be an HTML page. Skipping download.")
+            continue
+            
+        filename = os.path.join(out_dir, f)
+        log.info(f'Checking for {filename}')
+        
+        if os.path.exists(filename):
+            log.info(f"File {filename} already exists. Skipping download.")
+            continue
+            
+        log.info(f"Downloading {f} to {out_dir}...")
+        stream_download(link, f"{out_dir}/{f}")
