@@ -25,7 +25,6 @@ def get_uavsar_slcs(
     pol: list = ['HH'],
     seg: list = ['s1', 's2', 's3'],
     pxlsp: list = ['2x8']
-    # tag: list = ['BU', 'BC']
 ) -> dict: 
     """
     Query the ASF DAAC for UAVSAR flight lines and generate a dictionary of JPL download URLs.
@@ -220,9 +219,9 @@ def download_uavsar_slcs(files: list, out_dir: str):
     tag = None
     for r in RELEASE_FOLDERS:
         # for i in range(5):
-        url = f'{BASE_URL}/{r}/{flight_folder}/{files[i]}'
         tags = ['BU', 'BC']
-        for t in tags: 
+        for t in tags:
+            url = f'{BASE_URL}/{r}/{flight_folder}/{files[0]}'
             url = url.replace('[BC/BU]', t)
             log.info(f"Trying release folder {r} and tag {t}: {url}")
             if not is_html(url):
