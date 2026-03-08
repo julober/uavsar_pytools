@@ -3,7 +3,9 @@ import logging
 import numpy as np
 import asf_search as asf
 import requests
+import datetime
 from collections import defaultdict
+
 
 # Import the native download function from the repo
 from uavsar_pytools.download.download import stream_download
@@ -23,7 +25,7 @@ def get_uavsar_slcs(
     pol: list = ['HH'],
     seg: list = ['s1', 's2', 's3'],
     pxlsp: list = ['2x8'],
-    tag: list = ['BU']
+    tag: list = ['BU', 'BC']
 ) -> dict: 
     """
     Query the ASF DAAC for UAVSAR flight lines and generate a dictionary of JPL download URLs.
@@ -72,13 +74,13 @@ def get_uavsar_slcs(
         'grmesa': 'Grand Mesa, CO',
         'lowman': 'Lowman, CO',
         'fraser': 'Fraser, CO',
-        'ironto': 'Ironton, CO',                    # Senator Beck Basin
+        'irnton': 'Ironton, CO',                    # Senator Beck Basin
         'peeler': 'Peeler Peak, CO',                # East River
         'rockmt': 'Rocky Mountains NP, CO',         # Cameron Pass
         'silver': 'Silver City, ID',                # Reynolds Creek
         'uticam': 'Utica, MT',                      # Central Ag Research Center
-        'saltla': 'Salt Lake City, UT',             # Little Cottonwood Canyon
-        'losala': 'Los Alamos, NM',                 # Jemez River
+        'stlake': 'Salt Lake City, UT',             # Little Cottonwood Canyon
+        'alamos': 'Los Alamos, NM',                 # Jemez River
         'dorado': 'Eldorado National Forest, CA',   # American River Basin
         'donner': 'Donner Memorial State Park, CA', # Sagehen Creek
         'sierra': 'Sierra National Forest, CA'      # Lakes Basin
@@ -92,7 +94,9 @@ def get_uavsar_slcs(
             raise ValueError(f"Invalid flight name: {flight_name}. Valid options are: {campaigns}")
     else: 
         flight_abbr = next((k for k, v in campaigns.items() if v == flight_name), None)
-        
+    
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log.info(f"{current_time}")
     log.info(f'Getting files for {flight_name} ({flight_abbr}).')
 
     if flight_num is None: 
@@ -189,7 +193,7 @@ def download_uavsar_slcs(files: list, out_dir: str):
             return False
 
     BASE_URL = 'https://downloaduav2.jpl.nasa.gov'
-    releases = np.arange(26, 32)[::-1]  
+    releases = np.arange(20, 40)[::-1]  
     RELEASE_FOLDERS = [f'Release{r}' for r in releases]
 
     # check for empty list
@@ -214,11 +218,13 @@ def download_uavsar_slcs(files: list, out_dir: str):
     # find valid release folder
     release_folder = None
     for r in RELEASE_FOLDERS:
-        url = f'{BASE_URL}/{r}/{flight_folder}/{files[0]}'
-        if not is_html(url):
-            log.info(f'Found valid link, using release folder {r} for download.')
-            release_folder = r
-            break
+        for i in range(5):
+            url = f'{BASE_URL}/{r}/{flight_folder}/{files[i]}'
+            log.info(f"Trying release folder {r}: {url}")
+            if not is_html(url):
+                log.info(f'Found valid link, using release folder {r} for download.')
+                release_folder = r
+                break
 
     if not release_folder:
         log.error("Could not find a valid release folder for these files.")
