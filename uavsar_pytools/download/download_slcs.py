@@ -24,8 +24,8 @@ def get_uavsar_slcs(
     end_date: str = '2021-12-31',
     pol: list = ['HH'],
     seg: list = ['s1', 's2', 's3'],
-    pxlsp: list = ['2x8'],
-    tag: list = ['BU', 'BC']
+    pxlsp: list = ['2x8']
+    # tag: list = ['BU', 'BC']
 ) -> dict: 
     """
     Query the ASF DAAC for UAVSAR flight lines and generate a dictionary of JPL download URLs.
@@ -130,33 +130,33 @@ def get_uavsar_slcs(
         version = parts[8]
         date1 = parts[5]
         
-        for t in tag:
-            for p in pol: 
-                urls = []
-                for s in seg: 
-                    for pxl in pxlsp:
-                        f1_base = f"{site}_{flight_line}_{flight1_id}_{date1}_{band}{p}_{version}_{t}"
-                        
-                        # stack_dir = f"{site}_{flight_line}_{version}"
-                        # base_url = f"{jpl_site}/{release_folder}/{stack_dir}"
+        # for t in tag:
+        for p in pol: 
+            urls = []
+            for s in seg: 
+                for pxl in pxlsp:
+                    f1_base = f"{site}_{flight_line}_{flight1_id}_{date1}_{band}{p}_{version}_[BC/BU]"
+                    
+                    # stack_dir = f"{site}_{flight_line}_{version}"
+                    # base_url = f"{jpl_site}/{release_folder}/{stack_dir}"
 
-                        urls.append(f"{f1_base}_{s}_{pxl}.slc")
+                    urls.append(f"{f1_base}_{s}_{pxl}.slc")
 
-                        # this will cause some repeats, since there is only one per seg
-                        if getllh: 
-                            urls.append(f"{site}_{flight_line}_{version}_{t}_{s}_{pxl}.llh")
-                        if getlkv: 
-                            urls.append(f"{site}_{flight_line}_{version}_{t}_{s}_{pxl}.lkv")
+                    # this will cause some repeats, since there is only one per seg
+                    if getllh: 
+                        urls.append(f"{site}_{flight_line}_{version}_[BC/BU]_{s}_{pxl}.llh")
+                    if getlkv: 
+                        urls.append(f"{site}_{flight_line}_{version}_[BC/BU]_{s}_{pxl}.lkv")
 
-                if getann: 
-                    urls.append(f"{f1_base}.ann")
-                if getdop: 
-                        urls.append(f"{site}_{flight_line}_{version}_{t}.dop")
+            if getann: 
+                urls.append(f"{f1_base}.ann")
+            if getdop: 
+                    urls.append(f"{site}_{flight_line}_{version}_[BC/BU].dop")
 
-                dict_key = f'{flight_abbr}_{flight_line}'
-                for url in urls:
-                    if url not in links[dict_key]:
-                        links[dict_key].append(url)
+            dict_key = f'{flight_abbr}_{flight_line}'
+            for url in urls:
+                if url not in links[dict_key]:
+                    links[dict_key].append(url)
 
     return links
 
@@ -217,21 +217,30 @@ def download_uavsar_slcs(files: list, out_dir: str):
 
     # find valid release folder
     release_folder = None
+    tag = None
     for r in RELEASE_FOLDERS:
-        for i in range(5):
-            url = f'{BASE_URL}/{r}/{flight_folder}/{files[i]}'
-            log.info(f"Trying release folder {r}: {url}")
+        # for i in range(5):
+        url = f'{BASE_URL}/{r}/{flight_folder}/{files[i]}'
+        tags = ['BU', 'BC']
+        for t in tags: 
+            url = url.replace('[BC/BU]', t)
+            log.info(f"Trying release folder {r} and tag {t}: {url}")
             if not is_html(url):
-                log.info(f'Found valid link, using release folder {r} for download.')
+                log.info(f'Found valid link, using {r}, {t} for download.')
                 release_folder = r
+                tag = t
                 break
 
     if not release_folder:
         log.error("Could not find a valid release folder for these files.")
         return
+    elif not tag: 
+        log.error("Could not determine the correct tag (BU/BC) for these files.")
+        return
 
     # download files
     for f in files:
+        f = f.replace('[BC/BU]', tag)
         link = f'{BASE_URL}/{release_folder}/{flight_folder}/{f}'
         
         if is_html(link):
