@@ -1,20 +1,6 @@
 import numpy as np
 import rasterio as rio
 
-
-def arccos_theta(v):
-    if v < 1 and v > -1:
-        return np.arccos(v)
-    elif v > 1 and v < 3:
-        return np.arccos(2-v)
-    elif v < -1 and v > -3:
-        return np.arccos(-1 + 0.000001) - np.arccos(2+v)
-    else:
-        return np.nan
-
-arccos_theta = np.vectorize(arccos_theta)
-
-
 def calc_inc_angle(dem, lkv_x, lkv_y, lkv_z, pixel_size=5.556):
     """
     Calculates UAVSAR incidence angle from DEM and look vector components.
