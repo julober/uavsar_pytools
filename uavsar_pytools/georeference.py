@@ -197,7 +197,9 @@ def geolocate_uavsar(in_fp, ann_fp, out_dir, llh_fp):
                 to the pixels created by the conversion along the edge of topography.\n\
                 Error message is known and should not be an issue.')
         
-    shutil.rmtree(tmp_dir)
+    import time
+    time.sleep(5)
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return res_f
 
