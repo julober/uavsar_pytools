@@ -32,8 +32,8 @@ def calc_inc_angle(dem, lkv_x, lkv_y, lkv_z, pixel_size=5.556):
         raise ValueError('Pass filepath or np.array for DEM data.')
 
     # Map numpy row/col gradients to geographic x/y gradients
-    dx = col_grad
-    dy = -row_grad  # Invert row gradient so decreasing rows = moving North
+    dx = -col_grad
+    dy = row_grad  
 
     # Calculate true UNIT surface normal vectors: (-dx, -dy, 1)
     norm_mag = np.sqrt(dx**2 + dy**2 + 1.0)
