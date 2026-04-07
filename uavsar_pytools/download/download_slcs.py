@@ -192,7 +192,7 @@ def download_uavsar_slcs(files: list, out_dir: str):
             return False
 
     BASE_URL = 'https://downloaduav2.jpl.nasa.gov'
-    releases = np.arange(20, 40)[::-1]  
+    releases = np.arange(15, 55)[::-1]  
     RELEASE_FOLDERS = [f'Release{r}' for r in releases]
 
     # check for empty list
