@@ -109,12 +109,6 @@ def geolocate_uavsar(in_fp, ann_fp, out_dir, llh_fp):
             with rio.open(join(tmp_dir, name + '.tif'), 'w', **profile) as dst:
                 dst.write(arr.astype(arr.dtype), 1)
 
-    # Add VRT file for each tif
-#    tifs = glob(join(tmp_dir, '*.tif')) # list all .llh files
-#    for tiff in tifs: # loop to open and translate .llh to .vrt, and save .vrt using gdal
-#        raster_dataset = gdal.Open(tiff, gdal.GA_ReadOnly) # read in rasters
-#        raster = gdal.Translate(join(tmp_dir, basename(tiff).replace('.tif','.vrt')), raster_dataset, format = 'VRT', outputType = gdal.GDT_Float32)
-# Detect target grid resolution dynamically from input filename (e.g., '1x1', '2x8')
     # Detect target grid resolution dynamically from the input filename
     if '1x1' in basename(in_fp):
         target_spacing = '1x1'
