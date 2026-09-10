@@ -35,7 +35,7 @@ def calc_inc_angle(dem, lkv_x, lkv_y, lkv_z, pixel_size=5.556):
     dx = -col_grad
     dy = row_grad  
 
-    # Calculate true UNIT surface normal vectors: (-dx, -dy, 1)
+    # Calculate unit surface normal vectors: (-dx, -dy, 1)
     norm_mag = np.sqrt(dx**2 + dy**2 + 1.0)
     n_x = -dx / norm_mag
     n_y = -dy / norm_mag
@@ -57,15 +57,6 @@ def calc_inc_angle(dem, lkv_x, lkv_y, lkv_z, pixel_size=5.556):
             raise ValueError('Pass filepath or np.array for DEM data.')
         
     # Calculate look vector magnitude
-    # lkv_mag = np.zeros_like(lkv['x'])
-    # for direction, arr in lkv.items():
-    #     lkv_mag = lkv_mag + arr**2
-    # lkv_mag = lkv_mag**0.5
-    # lkv_mag[lkv_mag == 0] = np.nan
-    # # Unit vectors
-    # unit_lkv = {}
-    # for direction, arr in lkv.items():
-    #     unit_lkv[direction] = -arr/lkv_mag
     lkv_mag = np.sqrt(lkv['x']**2 + lkv['y']**2 + lkv['z']**2)
     lkv_mag[lkv_mag == 0] = np.nan
 
